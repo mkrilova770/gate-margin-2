@@ -71,10 +71,23 @@ async function buildScan(selectedExchanges: Set<string> | null): Promise<ScanApi
   });
 
   const relevantTokens = [...new Set(fundingRows.map((row) => row.token))];
-  const [borrowMap, spotMap] = await Promise.all([
+  const [borrowResult, spotResult] = await Promise.allSettled([
     fetchGateBorrowInfo(relevantTokens),
     fetchGateSpotMap(),
   ]);
+  const borrowMap =
+    borrowResult.status === "fulfilled" ? borrowResult.value : new Map<string, never>();
+  const spotMap = spotResult.status === "fulfilled" ? spotResult.value : new Map<string, number>();
+  if (borrowResult.status === "rejected") {
+    errors.push(
+      `GateBorrow: ${borrowResult.reason instanceof Error ? borrowResult.reason.message : "unknown error"}`
+    );
+  }
+  if (spotResult.status === "rejected") {
+    errors.push(
+      `GateSpot: ${spotResult.reason instanceof Error ? spotResult.reason.message : "unknown error"}`
+    );
+  }
 
   const rows = fundingRows.map((funding) =>
     createRow(funding, borrowMap.get(funding.token), spotMap.get(`${funding.token}_USDT`) ?? null)

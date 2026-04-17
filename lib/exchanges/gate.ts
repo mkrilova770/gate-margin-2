@@ -2,7 +2,7 @@ import { fetchJson } from "@/lib/http";
 import type { FundingInfo, GateBorrowRow } from "@/types";
 
 const GATE_API_HOST = "https://api.gateio.ws";
-const GATE_WEB_HOST = "https://www.gate.com";
+const GATE_WEB_HOSTS = ["https://www.gate.com", "https://www.gate.io"] as const;
 
 let marginPairsCache: { expiresAt: number; value: string[] } | null = null;
 let spotMapCache: { expiresAt: number; value: Map<string, number> } | null = null;
@@ -61,21 +61,27 @@ async function fetchGateWebBorrowRowsRaw(): Promise<GateWebBorrowResponse> {
     limit: "1000",
     search_coin: "",
   });
-  const response = await fetch(`${GATE_WEB_HOST}/apiw/v2/spot_loan/margin/margin_loan_info?${params}`, {
-    method: "GET",
-    headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
-      Accept: "application/json, text/plain, */*",
-      Referer: "https://www.gate.com/",
-    },
-    cache: "no-store",
-  });
+  let lastStatus = 0;
+  for (const host of GATE_WEB_HOSTS) {
+    const response = await fetch(`${host}/apiw/v2/spot_loan/margin/margin_loan_info?${params}`, {
+      method: "GET",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Safari/537.36",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        Referer: `${host}/`,
+        Origin: host,
+      },
+      cache: "no-store",
+    });
 
-  if (!response.ok) {
-    throw new Error(`Gate web borrow request failed (${response.status})`);
+    if (response.ok) {
+      return (await response.json()) as GateWebBorrowResponse;
+    }
+    lastStatus = response.status;
   }
-  return (await response.json()) as GateWebBorrowResponse;
+  throw new Error(`Gate web borrow request failed (${lastStatus || "unknown"})`);
 }
 
 // IMPORTANT: This keeps the existing logic unchanged for available borrow and borrow APR.
