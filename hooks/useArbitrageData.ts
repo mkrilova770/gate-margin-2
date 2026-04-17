@@ -8,6 +8,8 @@ const HISTORY_LIMIT = 40;
 
 export interface RowHistoryPoint {
   at: string;
+  rawFunding: number | null;
+  intervalHours: number;
   netAPR: number | null;
   borrowAPR: number | null;
   fundingAPR: number | null;
@@ -47,6 +49,8 @@ export function useArbitrageData(selectedExchanges: string[]) {
         const current = next[row.id] ?? [];
         const append: RowHistoryPoint = {
           at: query.data!.fetchedAt,
+          rawFunding: row.rawFunding,
+          intervalHours: row.intervalHours,
           netAPR: row.netAPR,
           borrowAPR: row.borrowAPR,
           fundingAPR: row.fundingAPR,

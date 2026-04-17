@@ -1,37 +1,204 @@
 "use client";
 
+import { FundingRateChart } from "@/components/FundingRateChart";
 import type { ArbitrageRow } from "@/types";
-import type { RowHistoryPoint } from "@/hooks/useArbitrageData";
+import { useEffect, useMemo, useState } from "react";
 
 interface TokenModalProps {
   row: ArbitrageRow | null;
-  history: RowHistoryPoint[];
   onClose: () => void;
 }
 
-function miniSeries(history: RowHistoryPoint[], selector: (p: RowHistoryPoint) => number | null): string {
-  const points = history.slice(-12).map(selector).filter((v): v is number => v != null && Number.isFinite(v));
-  return points.length > 0 ? points.map((v) => v.toFixed(2)).join(" -> ") : "n/a";
+interface FundingHistoryRow {
+  at: Date;
+  rawFunding: number;
 }
 
-export function TokenModal({ row, history, onClose }: TokenModalProps) {
+function formatRawFunding(rawFunding: number | null): string {
+  if (rawFunding == null || !Number.isFinite(rawFunding)) return "n/a";
+  const percent = rawFunding * 100;
+  const sign = percent > 0 ? "+" : "";
+  return `${sign}${percent.toFixed(4)}%`;
+}
+
+const MS_DAY = 24 * 60 * 60 * 1000;
+
+function sumFundingSince(rows: FundingHistoryRow[], days: number): number {
+  const from = Date.now() - days * MS_DAY;
+  return rows.filter((r) => r.at.getTime() >= from).reduce((acc, r) => acc + r.rawFunding, 0);
+}
+
+function formatDateTime(date: Date): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+export function TokenModal({ row, onClose }: TokenModalProps) {
+  const [fundingHistory, setFundingHistory] = useState<FundingHistoryRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!row) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    setFundingHistory([]);
+
+    const controller = new AbortController();
+    const query = new URLSearchParams({
+      exchange: row.exchange,
+      token: row.token,
+      days: "14",
+    }).toString();
+
+    fetch(`/api/funding-history?${query}`, { signal: controller.signal })
+      .then(async (response) => {
+        const payload = (await response.json()) as {
+          entries?: Array<{ time: string; rawFundingRate: number }>;
+          error?: string | null;
+        };
+        if (payload.error) {
+          throw new Error(payload.error);
+        }
+        const rows = (payload.entries ?? [])
+          .map((entry) => ({ at: new Date(entry.time), rawFunding: Number(entry.rawFundingRate) }))
+          .filter((entry) => !Number.isNaN(entry.at.getTime()) && Number.isFinite(entry.rawFunding))
+          .sort((a, b) => b.at.getTime() - a.at.getTime());
+        setFundingHistory(rows);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setHistoryError(error instanceof Error ? error.message : "Failed to load funding history");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setHistoryLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [row?.id]);
+
+  const fundingSums = useMemo(() => {
+    if (fundingHistory.length === 0) {
+      return {
+        d1: null as number | null,
+        d3: null as number | null,
+        d7: null as number | null,
+        d14: null as number | null,
+      };
+    }
+    return {
+      d1: sumFundingSince(fundingHistory, 1),
+      d3: sumFundingSince(fundingHistory, 3),
+      d7: sumFundingSince(fundingHistory, 7),
+      d14: sumFundingSince(fundingHistory, 14),
+    };
+  }, [fundingHistory]);
+
   if (!row) return null;
   return (
     <div className="modalBackdrop" onClick={onClose}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
-        <h3>
-          {row.token} / {row.exchange}
-        </h3>
-        <p>Funding APR: {row.fundingAPR?.toFixed(2) ?? "n/a"}%</p>
-        <p>Borrow APR: {row.borrowAPR?.toFixed(2) ?? "n/a"}%</p>
-        <p>Trading fees: {row.tradingFees.toFixed(2)}%</p>
-        <p>Net APR: {row.netAPR?.toFixed(2) ?? "n/a"}%</p>
-        <p>Spread: {row.spread?.toFixed(2) ?? "n/a"}%</p>
-        <hr />
-        <p>Funding history: {miniSeries(history, (p) => p.fundingAPR)}</p>
-        <p>Borrow history: {miniSeries(history, (p) => p.borrowAPR)}</p>
-        <p>Spread history: {miniSeries(history, (p) => p.spread)}</p>
-        <button onClick={onClose}>Close</button>
+      <div className="modal tokenModal" onClick={(event) => event.stopPropagation()}>
+        <div className="tokenModalHeader">
+          <h3>
+            {row.token} / {row.exchange}
+          </h3>
+          <button onClick={onClose}>Close</button>
+        </div>
+
+        <div className="tokenMetrics">
+          <div className="tokenMetricCard">
+            <span>Funding APR</span>
+            <strong>{row.fundingAPR?.toFixed(2) ?? "n/a"}%</strong>
+          </div>
+          <div className="tokenMetricCard">
+            <span>Raw funding</span>
+            <strong>{formatRawFunding(row.rawFunding)} /{row.intervalHours}h</strong>
+          </div>
+          <div className="tokenMetricCard">
+            <span>Net APR</span>
+            <strong>{row.netAPR?.toFixed(2) ?? "n/a"}%</strong>
+          </div>
+          <div className="tokenMetricCard">
+            <span>Next funding</span>
+            <strong>{row.nextFundingTime ? formatDateTime(new Date(row.nextFundingTime)) : "n/a"}</strong>
+          </div>
+        </div>
+
+        <div className="fundingSumsRow" aria-label="Сумма ставок фандинга за период">
+          <div className="fundingSumCard">
+            <span>Сумма фандинга (1 д)</span>
+            <strong className={fundingSums.d1 != null && fundingSums.d1 < 0 ? "rateNegative" : "ratePositive"}>
+              {historyLoading ? "…" : fundingSums.d1 == null ? "—" : formatRawFunding(fundingSums.d1)}
+            </strong>
+          </div>
+          <div className="fundingSumCard">
+            <span>Сумма фандинга (3 д)</span>
+            <strong className={fundingSums.d3 != null && fundingSums.d3 < 0 ? "rateNegative" : "ratePositive"}>
+              {historyLoading ? "…" : fundingSums.d3 == null ? "—" : formatRawFunding(fundingSums.d3)}
+            </strong>
+          </div>
+          <div className="fundingSumCard">
+            <span>Сумма фандинга (7 д)</span>
+            <strong className={fundingSums.d7 != null && fundingSums.d7 < 0 ? "rateNegative" : "ratePositive"}>
+              {historyLoading ? "…" : fundingSums.d7 == null ? "—" : formatRawFunding(fundingSums.d7)}
+            </strong>
+          </div>
+          <div className="fundingSumCard">
+            <span>Сумма фандинга (14 д)</span>
+            <strong className={fundingSums.d14 != null && fundingSums.d14 < 0 ? "rateNegative" : "ratePositive"}>
+              {historyLoading ? "…" : fundingSums.d14 == null ? "—" : formatRawFunding(fundingSums.d14)}
+            </strong>
+          </div>
+        </div>
+
+        <FundingRateChart
+          entries={fundingHistory.map((r) => ({ time: r.at.toISOString(), rawFundingRate: r.rawFunding }))}
+          loading={historyLoading}
+        />
+
+        <div className="fundingHistoryBlock">
+          <div className="fundingHistoryTitle">История начислений (14 дн.)</div>
+          <div className="fundingHistoryTableWrap">
+            <table className="fundingHistoryTable">
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Ставка</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyLoading ? (
+                  <tr>
+                    <td colSpan={2}>Loading funding history...</td>
+                  </tr>
+                ) : historyError ? (
+                  <tr>
+                    <td colSpan={2}>History error: {historyError}</td>
+                  </tr>
+                ) : fundingHistory.length > 0 ? (
+                  fundingHistory.map((entry, index) => (
+                    <tr key={`${entry.at.toISOString()}-${index}`}>
+                      <td>{formatDateTime(entry.at)}</td>
+                      <td className={entry.rawFunding < 0 ? "rateNegative" : "ratePositive"}>
+                        {formatRawFunding(entry.rawFunding)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={2}>No exchange funding history returned for this symbol</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,9 @@
 "use client";
 
 import type { ArbitrageRow } from "@/types";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const STORAGE_HIDDEN_TOKENS = "funding-arbitrage-scanner:hiddenTokens";
 
 interface ArbitrageTableProps {
   rows: ArbitrageRow[];
@@ -69,7 +71,33 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
   const [maxBorrowAPR, setMaxBorrowAPR] = useState<string>("");
   const [minLiquidity, setMinLiquidity] = useState<string>("");
   const [hiddenTokens, setHiddenTokens] = useState<Set<string>>(new Set());
+  const [hiddenTokensLoaded, setHiddenTokensLoaded] = useState(false);
   const [expandedTokens, setExpandedTokens] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_HIDDEN_TOKENS);
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          const list = parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
+          setHiddenTokens(new Set(list));
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    setHiddenTokensLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hiddenTokensLoaded) return;
+    try {
+      window.localStorage.setItem(STORAGE_HIDDEN_TOKENS, JSON.stringify([...hiddenTokens].sort()));
+    } catch {
+      /* ignore */
+    }
+  }, [hiddenTokens, hiddenTokensLoaded]);
 
   const filtered = useMemo(() => {
     const maxBorrow = parseOptionalNumber(maxBorrowAPR);

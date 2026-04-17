@@ -151,3 +151,219 @@ button {
   border-radius: 12px;
   padding: 14px;
 }
+
+.tokenModal {
+  width: min(860px, 92vw);
+  max-height: 86vh;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #0f1a31 0%, #0a1428 100%);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.45);
+}
+
+.tokenModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.tokenModalHeader h3 {
+  margin: 0;
+  font-size: 38px;
+  letter-spacing: 0.2px;
+}
+
+.tokenMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.tokenMetricCard {
+  background: rgba(18, 30, 56, 0.85);
+  border: 1px solid #2a3b64;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tokenMetricCard span {
+  color: #9cb0dd;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.tokenMetricCard strong {
+  color: #e8f0ff;
+  font-size: 24px;
+  line-height: 1.1;
+}
+
+.fundingSumsRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 780px) {
+  .fundingSumsRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.fundingSumCard {
+  background: rgba(18, 30, 56, 0.85);
+  border: 1px solid #2a3b64;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fundingSumCard span {
+  color: #9cb0dd;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
+
+.fundingSumCard strong {
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.fundingHistoryBlock {
+  border: 1px solid #2a3b64;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.fundingHistoryTitle {
+  font-size: 16px;
+  font-weight: 600;
+  padding: 10px 12px;
+  border-bottom: 1px solid #243559;
+  background: rgba(14, 23, 42, 0.9);
+}
+
+.fundingHistoryTableWrap {
+  max-height: 360px;
+  overflow: auto;
+}
+
+.fundingHistoryTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.fundingHistoryTable th,
+.fundingHistoryTable td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid #1e2d4d;
+}
+
+.fundingHistoryTable th {
+  position: sticky;
+  top: 0;
+  background: #101a31;
+  color: #9cb0dd;
+  z-index: 1;
+}
+
+.fundingHistoryTable td {
+  color: #dbe7ff;
+}
+
+.ratePositive {
+  color: #83f6a7 !important;
+  font-weight: 600;
+}
+
+.rateNegative {
+  color: #ff8383 !important;
+  font-weight: 600;
+}
+
+/* Funding rate chart (light panel inside modal) */
+.fundingChartPanel {
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #0f172a;
+  overflow: hidden;
+}
+
+.fundingChartToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-wrap: wrap;
+}
+
+.fundingChartTitle {
+  font-size: 14px;
+  color: #334155;
+}
+
+.fundingChartTitleValue {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.fundingChartRange {
+  display: flex;
+  gap: 6px;
+}
+
+.fundingChartRangeLabel {
+  font-size: 12px;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 600;
+}
+
+.fundingChartRange button {
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.fundingChartRange button.active {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+  font-weight: 600;
+}
+
+.fundingChartPlot {
+  padding: 6px 8px 10px;
+  background: #ffffff;
+}
+
+.fundingChartLoading,
+.fundingChartEmpty {
+  padding: 20px 14px;
+  text-align: center;
+  color: #64748b;
+  font-size: 13px;
+}

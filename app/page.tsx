@@ -5,7 +5,9 @@ import { StatusBar } from "@/components/StatusBar";
 import { TokenModal } from "@/components/TokenModal";
 import { useArbitrageData } from "@/hooks/useArbitrageData";
 import type { ArbitrageRow, ExchangeId } from "@/types";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const STORAGE_SELECTED_EXCHANGES = "funding-arbitrage-scanner:selectedExchanges";
 
 const EXCHANGES: ExchangeId[] = [
   "Binance",
@@ -23,8 +25,40 @@ const EXCHANGES: ExchangeId[] = [
 export default function HomePage() {
   const [query, setQuery] = useState("");
   const [selectedExchanges, setSelectedExchanges] = useState<string[]>(EXCHANGES);
+  const [exchangePrefsLoaded, setExchangePrefsLoaded] = useState(false);
   const [selectedRow, setSelectedRow] = useState<ArbitrageRow | null>(null);
-  const { data, isFetching, refetch, history } = useArbitrageData(selectedExchanges);
+  const { data, isFetching, refetch } = useArbitrageData(selectedExchanges);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_SELECTED_EXCHANGES);
+      if (!raw) {
+        setExchangePrefsLoaded(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        setExchangePrefsLoaded(true);
+        return;
+      }
+      const valid = parsed.filter((item): item is string => typeof item === "string" && EXCHANGES.includes(item as ExchangeId));
+      if (valid.length > 0) {
+        setSelectedExchanges(valid);
+      }
+    } catch {
+      /* ignore */
+    }
+    setExchangePrefsLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!exchangePrefsLoaded) return;
+    try {
+      window.localStorage.setItem(STORAGE_SELECTED_EXCHANGES, JSON.stringify(selectedExchanges));
+    } catch {
+      /* ignore */
+    }
+  }, [selectedExchanges, exchangePrefsLoaded]);
 
   const rows = useMemo(() => {
     const base = data?.rows ?? [];
@@ -81,11 +115,7 @@ export default function HomePage() {
 
       <ArbitrageTable rows={rows} onSelect={setSelectedRow} />
 
-      <TokenModal
-        row={selectedRow}
-        history={selectedRow ? history[selectedRow.id] ?? [] : []}
-        onClose={() => setSelectedRow(null)}
-      />
+      <TokenModal row={selectedRow} onClose={() => setSelectedRow(null)} />
     </main>
   );
 }

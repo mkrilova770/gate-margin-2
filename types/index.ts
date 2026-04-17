@@ -53,3 +53,8 @@ export interface ScanApiResponse {
   fetchedAt: string;
   errors: string[];
 }
+
+export interface FundingHistoryEntry {
+  time: string;
+  rawFundingRate: number;
+}
