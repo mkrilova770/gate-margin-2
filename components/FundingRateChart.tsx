@@ -5,6 +5,7 @@ import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -65,7 +66,12 @@ export function FundingRateChart({ entries, loading }: FundingRateChartProps) {
       return [min - pad, max + pad];
     }
     const pad = (max - min) * 0.08;
-    return [min - pad, max + pad];
+    let lo = min - pad;
+    let hi = max + pad;
+    // Всегда включаем 0% в ось, чтобы линия «ноль» была видна (сверху/снизу при односторонних данных)
+    if (min > 0) lo = 0;
+    if (max < 0) hi = 0;
+    return [lo, hi];
   }, [chartData]);
 
   if (loading) {
@@ -138,6 +144,20 @@ export function FundingRateChart({ entries, loading }: FundingRateChartProps) {
                   minute: "2-digit",
                   hour12: false,
                 }).format(new Date(p.ts));
+              }}
+            />
+            <ReferenceLine
+              y={0}
+              stroke="#475569"
+              strokeWidth={2}
+              strokeOpacity={0.85}
+              strokeDasharray="6 4"
+              label={{
+                value: "0%",
+                position: "right",
+                fill: "#475569",
+                fontSize: 11,
+                fontWeight: 600,
               }}
             />
             <Line
