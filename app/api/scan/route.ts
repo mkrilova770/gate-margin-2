@@ -7,12 +7,21 @@ import { NextResponse } from "next/server";
 
 const SCAN_SWR_TTL_MS = Number(process.env.SCAN_SWR_TTL_MS ?? 20_000);
 
-let lastGoodResponse: ScanApiResponse | null = null;
-let lastGoodAt = 0;
-let coldBuildInFlight: Promise<ScanApiResponse> | null = null;
+interface CacheEntry {
+  response: ScanApiResponse;
+  at: number;
+}
 
-function isFresh(): boolean {
-  return !!lastGoodResponse && Date.now() - lastGoodAt <= SCAN_SWR_TTL_MS;
+const lastGoodByKey = new Map<string, CacheEntry>();
+const inFlightByKey = new Map<string, Promise<ScanApiResponse>>();
+
+function isFresh(entry: CacheEntry | null): boolean {
+  return !!entry && Date.now() - entry.at <= SCAN_SWR_TTL_MS;
+}
+
+function normalizeExchangeKey(selectedExchanges: Set<string> | null): string {
+  if (!selectedExchanges || selectedExchanges.size === 0) return "ALL";
+  return [...selectedExchanges].sort().join(",");
 }
 
 function createRow(funding: FundingInfo, borrow: ReturnType<Map<string, unknown>["get"]>, spotPrice: number | null): ArbitrageRow {
@@ -104,40 +113,46 @@ export async function GET(request: Request) {
     exchangesQuery && exchangesQuery.trim()
       ? new Set(exchangesQuery.split(",").map((value) => value.trim()).filter(Boolean))
       : null;
+  const cacheKey = normalizeExchangeKey(selectedExchanges);
+  const cached = lastGoodByKey.get(cacheKey) ?? null;
 
-  if (isFresh()) {
-    return NextResponse.json(lastGoodResponse);
+  if (isFresh(cached)) {
+    return NextResponse.json(cached!.response);
   }
 
-  if (lastGoodResponse) {
-    if (!coldBuildInFlight) {
-      coldBuildInFlight = buildScan(selectedExchanges)
+  if (cached) {
+    if (!inFlightByKey.has(cacheKey)) {
+      inFlightByKey.set(
+        cacheKey,
+        buildScan(selectedExchanges)
         .then((next) => {
-          lastGoodResponse = next;
-          lastGoodAt = Date.now();
+          lastGoodByKey.set(cacheKey, { response: next, at: Date.now() });
           return next;
         })
         .finally(() => {
-          coldBuildInFlight = null;
-        });
+          inFlightByKey.delete(cacheKey);
+        })
+      );
     }
-    return NextResponse.json(lastGoodResponse);
+    return NextResponse.json(cached.response);
   }
 
-  if (!coldBuildInFlight) {
-    coldBuildInFlight = buildScan(selectedExchanges)
+  if (!inFlightByKey.has(cacheKey)) {
+    inFlightByKey.set(
+      cacheKey,
+      buildScan(selectedExchanges)
       .then((next) => {
-        lastGoodResponse = next;
-        lastGoodAt = Date.now();
+        lastGoodByKey.set(cacheKey, { response: next, at: Date.now() });
         return next;
       })
       .finally(() => {
-        coldBuildInFlight = null;
-      });
+        inFlightByKey.delete(cacheKey);
+      })
+    );
   }
 
   try {
-    const payload = await coldBuildInFlight;
+    const payload = await inFlightByKey.get(cacheKey)!;
     return NextResponse.json(payload);
   } catch (error) {
     return NextResponse.json(
