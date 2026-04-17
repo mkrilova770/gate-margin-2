@@ -1,0 +1,153 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #070b15;
+  color: #d4def7;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+}
+
+.container {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 14px 18px 28px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.headerRight {
+  display: flex;
+  gap: 10px;
+}
+
+input,
+button {
+  background: #111827;
+  color: #d4def7;
+  border: 1px solid #283247;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.exchangeSelector {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.statusBar {
+  display: flex;
+  gap: 14px;
+  color: #8fa0c7;
+  margin: 8px 0 10px;
+  font-size: 13px;
+}
+
+.tableControls {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.hiddenTokensBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 10px;
+  color: #9fb1db;
+  font-size: 12px;
+}
+
+.hiddenTokensBar button {
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #17233d;
+  border: 1px solid #2d3f66;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: #0a1326;
+}
+
+.table thead th {
+  text-align: left;
+  color: #8ea1cd;
+  font-weight: 600;
+  border-bottom: 1px solid #1f2d4a;
+  padding: 8px;
+}
+
+.table tbody td {
+  padding: 7px 8px;
+  border-bottom: 1px solid #16233d;
+}
+
+.table tbody tr:hover {
+  background: #0f1b33;
+  cursor: pointer;
+}
+
+.tokenCell {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.netPositive {
+  color: #56f196;
+  font-weight: 600;
+}
+
+.netNegative {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+.netNeutral {
+  color: #d4def7;
+  font-weight: 600;
+}
+
+.sortRow {
+  margin-top: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+}
+
+.modal {
+  width: 560px;
+  background: #0d162a;
+  border: 1px solid #27344f;
+  border-radius: 12px;
+  padding: 14px;
+}
