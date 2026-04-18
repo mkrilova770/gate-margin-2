@@ -1,5 +1,6 @@
 "use client";
 
+import { BorrowAprChart } from "@/components/BorrowAprChart";
 import { FundingRateChart } from "@/components/FundingRateChart";
 import type { ArbitrageRow } from "@/types";
 import { useEffect, useMemo, useState } from "react";
@@ -28,6 +29,24 @@ function sumFundingSince(rows: FundingHistoryRow[], days: number): number {
   return rows.filter((r) => r.at.getTime() >= from).reduce((acc, r) => acc + r.rawFunding, 0);
 }
 
+/** Годовая APR в «процентных пунктах» (как borrowAprPercent) → доля за один час, в тех же единицах что rawFunding. */
+function annualBorrowPercentToHourlyRaw(annualPercentPoints: number): number {
+  return (annualPercentPoints / 100) / 8760;
+}
+
+function sumBorrowHourlyRawSince(
+  entries: Array<{ time: string; borrowAprPercent: number }>,
+  days: number
+): number {
+  const from = Date.now() - days * MS_DAY;
+  return entries
+    .filter((e) => {
+      const t = new Date(e.time).getTime();
+      return !Number.isNaN(t) && t >= from && Number.isFinite(e.borrowAprPercent);
+    })
+    .reduce((acc, e) => acc + annualBorrowPercentToHourlyRaw(e.borrowAprPercent), 0);
+}
+
 function formatDateTime(date: Date): string {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
@@ -43,6 +62,11 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
   const [fundingHistory, setFundingHistory] = useState<FundingHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+
+  const [borrowAprEntries, setBorrowAprEntries] = useState<Array<{ time: string; borrowAprPercent: number }>>([]);
+  const [borrowAprLoading, setBorrowAprLoading] = useState(false);
+  const [borrowAprError, setBorrowAprError] = useState<string | null>(null);
+  const [borrowAprDisclaimer, setBorrowAprDisclaimer] = useState<string | null>(null);
 
   useEffect(() => {
     if (!row) return;
@@ -83,6 +107,56 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
     return () => controller.abort();
   }, [row?.id]);
 
+  useEffect(() => {
+    if (!row) {
+      setBorrowAprEntries([]);
+      setBorrowAprLoading(false);
+      setBorrowAprError(null);
+      setBorrowAprDisclaimer(null);
+      return;
+    }
+
+    setBorrowAprLoading(true);
+    setBorrowAprError(null);
+    setBorrowAprEntries([]);
+    setBorrowAprDisclaimer(null);
+
+    const controller = new AbortController();
+    const query = new URLSearchParams({
+      token: row.token,
+      days: "14",
+    }).toString();
+
+    fetch(`/api/gate-borrow-apr-history?${query}`, { signal: controller.signal })
+      .then(async (response) => {
+        const payload = (await response.json()) as {
+          entries?: Array<{ time: string; borrowAprPercent: number }>;
+          error?: string | null;
+          disclaimer?: string | null;
+        };
+        if (payload.error) {
+          throw new Error(payload.error);
+        }
+        const entries = (payload.entries ?? []).filter(
+          (e) =>
+            typeof e.time === "string" &&
+            Number.isFinite(Number(e.borrowAprPercent)) &&
+            !Number.isNaN(new Date(e.time).getTime())
+        );
+        setBorrowAprEntries(entries);
+        setBorrowAprDisclaimer(typeof payload.disclaimer === "string" ? payload.disclaimer : null);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setBorrowAprError(error instanceof Error ? error.message : "Failed to load borrow APR history");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBorrowAprLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [row?.id]);
+
   const fundingSums = useMemo(() => {
     if (fundingHistory.length === 0) {
       return {
@@ -99,6 +173,23 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
       d14: sumFundingSince(fundingHistory, 14),
     };
   }, [fundingHistory]);
+
+  const borrowSums = useMemo(() => {
+    if (borrowAprEntries.length === 0) {
+      return {
+        d1: null as number | null,
+        d3: null as number | null,
+        d7: null as number | null,
+        d14: null as number | null,
+      };
+    }
+    return {
+      d1: sumBorrowHourlyRawSince(borrowAprEntries, 1),
+      d3: sumBorrowHourlyRawSince(borrowAprEntries, 3),
+      d7: sumBorrowHourlyRawSince(borrowAprEntries, 7),
+      d14: sumBorrowHourlyRawSince(borrowAprEntries, 14),
+    };
+  }, [borrowAprEntries]);
 
   if (!row) return null;
   return (
@@ -157,10 +248,48 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
           </div>
         </div>
 
+        <div className="fundingSumsRow borrowSumsRow" aria-label="Сумма почасового займа (как raw), из годовой APR">
+          <div className="fundingSumCard">
+            <span>Сумма займа (1 д)</span>
+            <strong className="rateNegative">
+              {borrowAprLoading ? "…" : borrowSums.d1 == null ? "—" : formatRawFunding(borrowSums.d1)}
+            </strong>
+          </div>
+          <div className="fundingSumCard">
+            <span>Сумма займа (3 д)</span>
+            <strong className="rateNegative">
+              {borrowAprLoading ? "…" : borrowSums.d3 == null ? "—" : formatRawFunding(borrowSums.d3)}
+            </strong>
+          </div>
+          <div className="fundingSumCard">
+            <span>Сумма займа (7 д)</span>
+            <strong className="rateNegative">
+              {borrowAprLoading ? "…" : borrowSums.d7 == null ? "—" : formatRawFunding(borrowSums.d7)}
+            </strong>
+          </div>
+          <div className="fundingSumCard">
+            <span>Сумма займа (14 д)</span>
+            <strong className="rateNegative">
+              {borrowAprLoading ? "…" : borrowSums.d14 == null ? "—" : formatRawFunding(borrowSums.d14)}
+            </strong>
+          </div>
+        </div>
+
         <FundingRateChart
           entries={fundingHistory.map((r) => ({ time: r.at.toISOString(), rawFundingRate: r.rawFunding }))}
           loading={historyLoading}
         />
+
+        <>
+          <BorrowAprChart
+            entries={borrowAprEntries}
+            loading={borrowAprLoading}
+            disclaimer={borrowAprDisclaimer}
+          />
+          {borrowAprError ? (
+            <div className="borrowAprGateNote borrowAprGateNoteError">Маржинальный займ (Gate): {borrowAprError}</div>
+          ) : null}
+        </>
 
         <div className="fundingHistoryBlock">
           <div className="fundingHistoryTitle">История начислений (14 дн.)</div>
