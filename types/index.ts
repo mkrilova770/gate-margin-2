@@ -10,6 +10,8 @@ export type ExchangeId =
   | "BitMart"
   | "KuCoin";
 
+export type MarginSourceId = "Gate" | "KuCoin";
+
 export interface FundingInfo {
   exchange: ExchangeId;
   token: string;
@@ -29,6 +31,13 @@ export interface GateBorrowRow {
   borrowLiquidityUsdt: number | null;
 }
 
+export interface KucoinBorrowRow {
+  token: string;
+  borrowAPR: number | null;
+  maxBorrow: number | null;
+  estimatedUsdt: number | null;
+}
+
 export interface ArbitrageRow {
   id: string;
   token: string;
@@ -37,6 +46,9 @@ export interface ArbitrageRow {
   intervalHours: number;
   fundingAPR: number | null;
   borrowAPR: number | null;
+  borrowAPR_gate: number | null;
+  borrowAPR_kucoin: number | null;
+  borrowSource: MarginSourceId | null;
   tradingFees: number;
   netAPR: number | null;
   spread: number | null;
@@ -44,6 +56,8 @@ export interface ArbitrageRow {
   spotPrice: number | null;
   borrowLiquidityToken: number | null;
   borrowLiquidityUsdt: number | null;
+  kucoinMaxBorrow: number | null;
+  kucoinEstimatedUsdt: number | null;
   nextFundingTime: string | null;
   updatedAt: string;
 }

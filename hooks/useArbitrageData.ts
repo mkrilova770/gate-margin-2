@@ -16,18 +16,24 @@ export interface RowHistoryPoint {
   spread: number | null;
 }
 
-export function useArbitrageData(selectedExchanges: string[]) {
+export function useArbitrageData(selectedExchanges: string[], marginSources: string[]) {
   const [history, setHistory] = useState<Record<string, RowHistoryPoint[]>>({});
   const exchangesKey = useMemo(() => selectedExchanges.slice().sort().join(","), [selectedExchanges]);
+  const marginKey = useMemo(() => marginSources.slice().sort().join(","), [marginSources]);
 
   const query = useQuery<ScanApiResponse>({
-    queryKey: ["scan", exchangesKey],
+    queryKey: ["scan", exchangesKey, marginKey],
     queryFn: async () => {
-      const query = exchangesKey ? `?exchanges=${encodeURIComponent(exchangesKey)}` : "";
+      const params = new URLSearchParams();
+      if (exchangesKey) params.set("exchanges", exchangesKey);
+      if (marginKey) params.set("marginSources", marginKey);
+      const qs = params.toString();
+      const url = qs ? `/api/scan?${qs}` : "/api/scan";
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 20_000);
       try {
-        const response = await fetch(`/api/scan${query}`, { signal: controller.signal });
+        const response = await fetch(url, { signal: controller.signal });
         const payload = (await response.json()) as ScanApiResponse;
         if (!response.ok) {
           throw new Error(payload.errors?.[0] ?? "scan request failed");

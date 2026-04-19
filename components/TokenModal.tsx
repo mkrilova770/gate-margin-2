@@ -2,12 +2,15 @@
 
 import { BorrowAprChart } from "@/components/BorrowAprChart";
 import { FundingRateChart } from "@/components/FundingRateChart";
-import type { ArbitrageRow } from "@/types";
+import type { ArbitrageRow, MarginSourceId } from "@/types";
 import { useEffect, useMemo, useState } from "react";
 
 interface TokenModalProps {
   row: ArbitrageRow | null;
   onClose: () => void;
+  marginSources: MarginSourceId[];
+  /** When both Gate+KuCoin margin columns are shown, set from which borrow cell the row was opened. */
+  borrowChartOverride?: "gate" | "kucoin" | null;
 }
 
 interface FundingHistoryRow {
@@ -29,7 +32,6 @@ function sumFundingSince(rows: FundingHistoryRow[], days: number): number {
   return rows.filter((r) => r.at.getTime() >= from).reduce((acc, r) => acc + r.rawFunding, 0);
 }
 
-/** Годовая APR в «процентных пунктах» (как borrowAprPercent) → доля за один час, в тех же единицах что rawFunding. */
 function annualBorrowPercentToHourlyRaw(annualPercentPoints: number): number {
   return (annualPercentPoints / 100) / 8760;
 }
@@ -58,7 +60,12 @@ function formatDateTime(date: Date): string {
   }).format(date);
 }
 
-export function TokenModal({ row, onClose }: TokenModalProps) {
+function fmtApr(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "n/a";
+  return `${value.toFixed(2)}%`;
+}
+
+export function TokenModal({ row, onClose, marginSources, borrowChartOverride = null }: TokenModalProps) {
   const [fundingHistory, setFundingHistory] = useState<FundingHistoryRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -67,6 +74,9 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
   const [borrowAprLoading, setBorrowAprLoading] = useState(false);
   const [borrowAprError, setBorrowAprError] = useState<string | null>(null);
   const [borrowAprDisclaimer, setBorrowAprDisclaimer] = useState<string | null>(null);
+
+  const showGate = marginSources.includes("Gate");
+  const showKucoin = marginSources.includes("KuCoin");
 
   useEffect(() => {
     if (!row) return;
@@ -107,6 +117,15 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
     return () => controller.abort();
   }, [row?.id]);
 
+  const borrowHistorySource: "gate" | "kucoin" = useMemo(() => {
+    if (borrowChartOverride === "gate" || borrowChartOverride === "kucoin") {
+      return borrowChartOverride;
+    }
+    if (!showGate && showKucoin) return "kucoin";
+    if (row?.borrowSource === "KuCoin" && showKucoin) return "kucoin";
+    return "gate";
+  }, [borrowChartOverride, showGate, showKucoin, row?.borrowSource]);
+
   useEffect(() => {
     if (!row) {
       setBorrowAprEntries([]);
@@ -127,7 +146,11 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
       days: "14",
     }).toString();
 
-    fetch(`/api/gate-borrow-apr-history?${query}`, { signal: controller.signal })
+    const endpoint = borrowHistorySource === "kucoin"
+      ? `/api/kucoin-borrow-apr-history?${query}`
+      : `/api/gate-borrow-apr-history?${query}`;
+
+    fetch(endpoint, { signal: controller.signal })
       .then(async (response) => {
         const payload = (await response.json()) as {
           entries?: Array<{ time: string; borrowAprPercent: number }>;
@@ -155,7 +178,7 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
       });
 
     return () => controller.abort();
-  }, [row?.id]);
+  }, [row?.id, borrowHistorySource]);
 
   const fundingSums = useMemo(() => {
     if (fundingHistory.length === 0) {
@@ -219,6 +242,26 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
             <span>Next funding</span>
             <strong>{row.nextFundingTime ? formatDateTime(new Date(row.nextFundingTime)) : "n/a"}</strong>
           </div>
+          {showGate && (
+            <div className="tokenMetricCard">
+              <span>Borrow APR (Gate)</span>
+              <strong className="borrowGateValue">{fmtApr(row.borrowAPR_gate)}</strong>
+            </div>
+          )}
+          {showKucoin && (
+            <div className="tokenMetricCard">
+              <span>Borrow APR (KuCoin)</span>
+              <strong className="borrowKucoinValue">{fmtApr(row.borrowAPR_kucoin)}</strong>
+              {row.kucoinMaxBorrow != null && (
+                <span className="kucoinSubInfo">
+                  Max: {row.kucoinMaxBorrow.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                  {row.kucoinEstimatedUsdt != null && (
+                    <> (~${row.kucoinEstimatedUsdt.toLocaleString(undefined, { maximumFractionDigits: 0 })})</>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="fundingSumsRow" aria-label="Сумма ставок фандинга за период">
@@ -285,9 +328,12 @@ export function TokenModal({ row, onClose }: TokenModalProps) {
             entries={borrowAprEntries}
             loading={borrowAprLoading}
             disclaimer={borrowAprDisclaimer}
+            source={borrowHistorySource}
           />
           {borrowAprError ? (
-            <div className="borrowAprGateNote borrowAprGateNoteError">Маржинальный займ (Gate): {borrowAprError}</div>
+            <div className="borrowAprGateNote borrowAprGateNoteError">
+              Маржинальный займ ({borrowHistorySource === "kucoin" ? "KuCoin" : "Gate"}): {borrowAprError}
+            </div>
           ) : null}
         </>
 

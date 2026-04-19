@@ -1,13 +1,14 @@
 "use client";
 
-import type { ArbitrageRow } from "@/types";
+import type { ArbitrageRow, MarginSourceId } from "@/types";
 import { useEffect, useMemo, useState } from "react";
 
 const STORAGE_HIDDEN_TOKENS = "funding-arbitrage-scanner:hiddenTokens";
 
 interface ArbitrageTableProps {
   rows: ArbitrageRow[];
-  onSelect: (row: ArbitrageRow) => void;
+  onSelect: (row: ArbitrageRow, borrowChartSource?: "gate" | "kucoin") => void;
+  marginSources: MarginSourceId[];
 }
 
 type SortField =
@@ -36,8 +37,24 @@ function fmt(value: number | null, digits = 2, suffix = "%"): string {
 
 function fmtBorrow(tokenAmount: number | null, usdtAmount: number | null): string {
   const token = tokenAmount == null ? "n/a" : tokenAmount.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  const usdt = usdtAmount == null ? "n/a" : usdtAmount.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const usdt = usdtAmount == null ? "n/a" : usdtAmount.toLocaleString(undefined, { maximumFractionDigits: 0 });
   return `${token} (~${usdt} USDT)`;
+}
+
+function fmtAvailableBorrow(row: ArbitrageRow, showGate: boolean, showKucoin: boolean): string {
+  const hasGate = row.borrowLiquidityToken != null || row.borrowLiquidityUsdt != null;
+  const hasKucoin = row.kucoinMaxBorrow != null;
+
+  if (showGate && showKucoin) {
+    const parts: string[] = [];
+    if (hasGate) parts.push(`G: ${fmtBorrow(row.borrowLiquidityToken, row.borrowLiquidityUsdt)}`);
+    if (hasKucoin) parts.push(`K: ${fmtBorrow(row.kucoinMaxBorrow, row.kucoinEstimatedUsdt)}`);
+    return parts.length > 0 ? parts.join(" | ") : "n/a";
+  }
+  if (showKucoin && hasKucoin) {
+    return fmtBorrow(row.kucoinMaxBorrow, row.kucoinEstimatedUsdt);
+  }
+  return fmtBorrow(row.borrowLiquidityToken, row.borrowLiquidityUsdt);
 }
 
 function netClass(value: number | null): string {
@@ -48,6 +65,11 @@ function netClass(value: number | null): string {
 }
 
 function rowSortValue(row: ArbitrageRow, field: SortField): number {
+  if (field === "borrowLiquidityUsdt") {
+    return row.borrowSource === "KuCoin"
+      ? asNumber(row.kucoinEstimatedUsdt)
+      : asNumber(row.borrowLiquidityUsdt);
+  }
   return asNumber(row[field] as number | null);
 }
 
@@ -64,7 +86,7 @@ function fmtRawFunding(value: number | null, intervalHours: number): string {
   return `${sign}${percent.toFixed(4)}% /${intervalHours}h`;
 }
 
-export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
+export function ArbitrageTable({ rows, onSelect, marginSources }: ArbitrageTableProps) {
   const [sortField, setSortField] = useState<SortField>("netAPR");
   const [sortDesc, setSortDesc] = useState(true);
   const [grouped, setGrouped] = useState(true);
@@ -73,6 +95,10 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
   const [hiddenTokens, setHiddenTokens] = useState<Set<string>>(new Set());
   const [hiddenTokensLoaded, setHiddenTokensLoaded] = useState(false);
   const [expandedTokens, setExpandedTokens] = useState<Set<string>>(new Set());
+
+  const showGate = marginSources.includes("Gate");
+  const showKucoin = marginSources.includes("KuCoin");
+  const showBoth = showGate && showKucoin;
 
   useEffect(() => {
     try {
@@ -105,7 +131,12 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
     return rows.filter((row) => {
       if (hiddenTokens.has(row.token)) return false;
       if (Number.isFinite(maxBorrow) && (row.borrowAPR ?? Infinity) > maxBorrow) return false;
-      if (Number.isFinite(minLiq) && (row.borrowLiquidityUsdt ?? 0) < minLiq) return false;
+      if (Number.isFinite(minLiq)) {
+        const liq = row.borrowSource === "KuCoin"
+          ? (row.kucoinEstimatedUsdt ?? 0)
+          : (row.borrowLiquidityUsdt ?? 0);
+        if (liq < minLiq) return false;
+      }
       return true;
     });
   }, [rows, maxBorrowAPR, minLiquidity, hiddenTokens]);
@@ -179,6 +210,56 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
     return sortDesc ? " ↓" : " ↑";
   };
 
+  function renderBorrowCells(row: ArbitrageRow) {
+    if (showBoth) {
+      return (
+        <>
+          <td
+            className="borrowAprCellClickable"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(row, "gate");
+            }}
+          >
+            {fmt(row.borrowAPR_gate)}
+          </td>
+          <td
+            className="borrowAprCellClickable"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect(row, "kucoin");
+            }}
+          >
+            {fmt(row.borrowAPR_kucoin)}
+          </td>
+        </>
+      );
+    }
+    if (showKucoin) {
+      return <td>{fmt(row.borrowAPR_kucoin)}</td>;
+    }
+    return <td>{fmt(row.borrowAPR_gate)}</td>;
+  }
+
+  function renderBorrowHeaders() {
+    if (showBoth) {
+      return (
+        <>
+          <th onClick={() => handleSort("borrowAPR")}>Borrow Gate{sortMark("borrowAPR")}</th>
+          <th onClick={() => handleSort("borrowAPR")}>Borrow KuCoin{sortMark("borrowAPR")}</th>
+        </>
+      );
+    }
+    if (showKucoin) {
+      return (
+        <th onClick={() => handleSort("borrowAPR")}>Borrow APR (KuCoin){sortMark("borrowAPR")}</th>
+      );
+    }
+    return (
+      <th onClick={() => handleSort("borrowAPR")}>Borrow APR{sortMark("borrowAPR")}</th>
+    );
+  }
+
   return (
     <>
       <div className="tableControls">
@@ -222,7 +303,7 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
             <th onClick={() => handleSort("rawFunding")}>Raw Funding{sortMark("rawFunding")}</th>
             <th onClick={() => handleSort("netAPR")}>Net APR{sortMark("netAPR")}</th>
             <th onClick={() => handleSort("fundingAPR")}>Funding APR{sortMark("fundingAPR")}</th>
-            <th onClick={() => handleSort("borrowAPR")}>Borrow APR{sortMark("borrowAPR")}</th>
+            {renderBorrowHeaders()}
             <th onClick={() => handleSort("spread")}>Spread{sortMark("spread")}</th>
             <th onClick={() => handleSort("borrowLiquidityUsdt")}>
               Available Borrow{sortMark("borrowLiquidityUsdt")}
@@ -262,9 +343,9 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
                     <td>{fmtRawFunding(top.rawFunding, top.intervalHours)}</td>
                     <td className={netClass(top.netAPR)}>{fmt(top.netAPR)}</td>
                     <td>{fmt(top.fundingAPR)}</td>
-                    <td>{fmt(top.borrowAPR)}</td>
+                    {renderBorrowCells(top)}
                     <td>{fmt(top.spread)}</td>
-                    <td>{fmtBorrow(top.borrowLiquidityToken, top.borrowLiquidityUsdt)}</td>
+                    <td>{fmtAvailableBorrow(top, showGate, showKucoin)}</td>
                     <td>{exchangeCounts.get(top.token) ?? 1}</td>
                     <td>{top.nextFundingTime ? new Date(top.nextFundingTime).toLocaleString() : "n/a"}</td>
                   </tr>
@@ -282,9 +363,9 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
                         <td>{fmtRawFunding(row.rawFunding, row.intervalHours)}</td>
                         <td className={netClass(row.netAPR)}>{fmt(row.netAPR)}</td>
                         <td>{fmt(row.fundingAPR)}</td>
-                        <td>{fmt(row.borrowAPR)}</td>
+                        {renderBorrowCells(row)}
                         <td>{fmt(row.spread)}</td>
-                        <td>{fmtBorrow(row.borrowLiquidityToken, row.borrowLiquidityUsdt)}</td>
+                        <td>{fmtAvailableBorrow(row, showGate, showKucoin)}</td>
                         <td>{exchangeCounts.get(row.token) ?? 1}</td>
                         <td>{row.nextFundingTime ? new Date(row.nextFundingTime).toLocaleString() : "n/a"}</td>
                       </tr>
@@ -311,9 +392,9 @@ export function ArbitrageTable({ rows, onSelect }: ArbitrageTableProps) {
                   <td>{fmtRawFunding(row.rawFunding, row.intervalHours)}</td>
                   <td className={netClass(row.netAPR)}>{fmt(row.netAPR)}</td>
                   <td>{fmt(row.fundingAPR)}</td>
-                  <td>{fmt(row.borrowAPR)}</td>
+                  {renderBorrowCells(row)}
                   <td>{fmt(row.spread)}</td>
-                  <td>{fmtBorrow(row.borrowLiquidityToken, row.borrowLiquidityUsdt)}</td>
+                  <td>{fmtAvailableBorrow(row, showGate, showKucoin)}</td>
                   <td>{exchangeCounts.get(row.token) ?? 1}</td>
                   <td>{row.nextFundingTime ? new Date(row.nextFundingTime).toLocaleString() : "n/a"}</td>
                 </tr>

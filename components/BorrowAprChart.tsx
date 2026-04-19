@@ -17,6 +17,7 @@ interface BorrowAprChartProps {
   loading?: boolean;
   /** Explains data source / that true margin history is not public */
   disclaimer?: string | null;
+  source?: "gate" | "kucoin";
 }
 
 function formatPct4(value: number): string {
@@ -36,7 +37,8 @@ function buildChartSeries(entries: Array<{ time: string; borrowAprPercent: numbe
     .map(([ts, pct]) => ({ ts, pct }));
 }
 
-export function BorrowAprChart({ entries, loading, disclaimer }: BorrowAprChartProps) {
+export function BorrowAprChart({ entries, loading, disclaimer, source = "gate" }: BorrowAprChartProps) {
+  const sourceLabel = source === "kucoin" ? "KuCoin" : "Gate";
   const chartData = useMemo(() => buildChartSeries(entries), [entries]);
 
   const latestPct = useMemo(() => {
@@ -81,7 +83,7 @@ export function BorrowAprChart({ entries, loading, disclaimer }: BorrowAprChartP
   if (chartData.length === 0) {
     return (
       <div className="fundingChartPanel">
-        <div className="fundingChartEmpty">Нет ставки займа Gate для этого токена (margin_loan_info)</div>
+        <div className="fundingChartEmpty">Нет ставки займа {sourceLabel} для этого токена</div>
       </div>
     );
   }
@@ -90,7 +92,7 @@ export function BorrowAprChart({ entries, loading, disclaimer }: BorrowAprChartP
     <div className="fundingChartPanel">
       <div className="fundingChartToolbar">
         <div className="fundingChartTitle">
-          Маржинальный займ Gate (как в таблице):{" "}
+          Маржинальный займ {sourceLabel} (как в таблице):{" "}
           <span className="fundingChartTitleValue borrowAprChartTitleValue">
             {latestPct == null ? "—" : formatPct4(latestPct)}
           </span>
